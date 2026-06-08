@@ -37,7 +37,7 @@ v	Jogador olhando para baixo
 Cenário
 Símbolo	Significado
 -	Parede (não pode ser atravessada)
-#	Espinho (causa morte instantânea)
+o hashtag	Espinho (causa morte instantânea)
 k	Caixa (bloqueia passagem, pode ser destruída com ataque)
 O	Botão (executa uma ação quando pressionado)
 D	Porta fechada
