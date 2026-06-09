@@ -3,6 +3,8 @@
 ## Desenvolvedores
 
 André Hiroshi Mileo Yamada
+
+
 Artur Sampaio Dantas
 
 ## História do Jogo
