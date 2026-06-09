@@ -1,12 +1,11 @@
-
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
-#define MAX_LINHAS  25
-#define MAX_COLUNAS 25
+#define MAX_LINHAS   25
+#define MAX_COLUNAS  25
+#define MAX_MONSTROS 20
 
 char mapa[MAX_LINHAS][MAX_COLUNAS];
 char mapa_salvo[MAX_LINHAS][MAX_COLUNAS];
@@ -14,15 +13,12 @@ int  num_linhas, num_colunas;
 
 int  jogador_linha, jogador_coluna;
 char jogador_direcao;
-int  vidas;
-int  arma;
-int  tem_chave;
-int  fase_atual;
+int  vidas, arma, tem_chave, fase_atual;
 
-int  monstro_linha[20];
-int  monstro_coluna[20];
-char monstro_tipo[20];
-int  monstro_vivo[20];
+int  monstro_linha[MAX_MONSTROS];
+int  monstro_coluna[MAX_MONSTROS];
+char monstro_tipo[MAX_MONSTROS];
+int  monstro_vivo[MAX_MONSTROS];
 int  total_monstros;
 
 int  boss_vida;
@@ -30,39 +26,93 @@ int  boss_contador_turno;
 
 char celula_sob_jogador;
 
-int  jogador_linha_inicio;
-int  jogador_coluna_inicio;
+int  jogador_linha_inicio, jogador_coluna_inicio;
 char jogador_direcao_inicio;
+char celula_sob_jogador_inicio;
+int  monstro_linha_inicio[MAX_MONSTROS];
+int  monstro_coluna_inicio[MAX_MONSTROS];
+int  boss_vida_inicio;
+
+char ler_char() {
+    int c;
+    char lido = '\0';
+    while ((c = getchar()) != EOF) {
+        if ((char)c != '\n') { lido = (char)c; break; }
+    }
+    while (c != '\n' && c != EOF)
+        c = getchar();
+    return lido;
+}
+
+void limpar_tela() {
+#ifdef _WIN32
+    system("cls");
+#else
+    system("clear");
+#endif
+}
 
 void pausar() {
-    char c;
     printf("\n[pressione enter]\n");
-    scanf(" %c", &c);
+    int c;
+    while ((c = getchar()) != '\n' && c != EOF);
+}
+
+int pos_valida(int l, int c) {
+    return (l >= 0 && l < num_linhas && c >= 0 && c < num_colunas);
+}
+
+char mapa_get(int l, int c) {
+    if (!pos_valida(l, c)) return '*';
+    return mapa[l][c];
+}
+
+void mapa_set(int l, int c, char val) {
+    if (pos_valida(l, c))
+        mapa[l][c] = val;
+}
+
+void sincronizar_monstros_no_mapa() {
+    int k;
+    for (k = 0; k < total_monstros; k++) {
+        if (monstro_vivo[k] &&
+            monstro_linha[k]  >= 0 && monstro_linha[k]  < num_linhas &&
+            monstro_coluna[k] >= 0 && monstro_coluna[k] < num_colunas) {
+            mapa[monstro_linha[k]][monstro_coluna[k]] = monstro_tipo[k];
+        }
+    }
 }
 
 void desenhar() {
-    int linha, coluna;
-    system("cls");
+    int l, c;
+    limpar_tela();
     printf("fase:%d  vidas:%d  arma:%d  chave:%d\n\n",
-        fase_atual, vidas, arma, tem_chave);
-    for (linha = 0; linha < num_linhas; linha++) {
-        for (coluna = 0; coluna < num_colunas; coluna++)
-            printf("%c", mapa[linha][coluna]);
-        printf("\n");
+           fase_atual, vidas, arma, tem_chave);
+    for (l = 0; l < num_linhas; l++) {
+        for (c = 0; c < num_colunas; c++)
+            putchar(mapa[l][c]);
+        putchar('\n');
     }
     printf("\nw/a/s/d=mover  i=interagir  o=atacar  q=sair\n");
 }
 
-void salvar_mapa() {
+void salvar_estado() {
+    int k;
     memcpy(mapa_salvo, mapa, sizeof(mapa));
-    jogador_linha_inicio   = jogador_linha;
-    jogador_coluna_inicio  = jogador_coluna;
-    jogador_direcao_inicio = jogador_direcao;
+    jogador_linha_inicio      = jogador_linha;
+    jogador_coluna_inicio     = jogador_coluna;
+    jogador_direcao_inicio    = jogador_direcao;
+    celula_sob_jogador_inicio = celula_sob_jogador;
+    boss_vida_inicio          = boss_vida;
+    for (k = 0; k < total_monstros; k++) {
+        monstro_linha_inicio[k]  = monstro_linha[k];
+        monstro_coluna_inicio[k] = monstro_coluna[k];
+    }
 }
 
 void carregar_vila() {
-    int linha, coluna;
-    char temp[10][11] = {
+    int l, c;
+    const char *temp[10] = {
         "**********",
         "*        *",
         "* N      *",
@@ -77,21 +127,22 @@ void carregar_vila() {
     fase_atual  = 0;
     num_linhas  = 10;
     num_colunas = 10;
-    for (linha = 0; linha < num_linhas; linha++)
-        for (coluna = 0; coluna < num_colunas; coluna++)
-            mapa[linha][coluna] = temp[linha][coluna];
+    for (l = 0; l < num_linhas; l++)
+        for (c = 0; c < num_colunas; c++)
+            mapa[l][c] = temp[l][c];
     jogador_linha      = 4;
     jogador_coluna     = 4;
     jogador_direcao    = '>';
     celula_sob_jogador = ' ';
-    mapa[jogador_linha][jogador_coluna] = jogador_direcao;
+    mapa_set(jogador_linha, jogador_coluna, jogador_direcao);
     total_monstros = 0;
-    salvar_mapa();
+    boss_vida      = 0;
+    salvar_estado();
 }
 
 void carregar_andar1() {
-    int linha, coluna;
-    char temp[10][11] = {
+    int l, c;
+    const char *temp[10] = {
         "**********",
         "*>       *",
         "*  *****D*",
@@ -106,22 +157,23 @@ void carregar_andar1() {
     fase_atual  = 1;
     num_linhas  = 10;
     num_colunas = 10;
-    for (linha = 0; linha < num_linhas; linha++)
-        for (coluna = 0; coluna < num_colunas; coluna++)
-            mapa[linha][coluna] = temp[linha][coluna];
+    for (l = 0; l < num_linhas; l++)
+        for (c = 0; c < num_colunas; c++)
+            mapa[l][c] = temp[l][c];
     jogador_linha      = 1;
     jogador_coluna     = 1;
     jogador_direcao    = '>';
     celula_sob_jogador = ' ';
-    mapa[jogador_linha][jogador_coluna] = jogador_direcao;
+    mapa_set(jogador_linha, jogador_coluna, jogador_direcao);
     total_monstros = 0;
     tem_chave      = 0;
-    salvar_mapa();
+    boss_vida      = 0;
+    salvar_estado();
 }
 
 void carregar_andar2() {
-    int linha, coluna;
-    char temp[15][16] = {
+    int l, c;
+    const char *temp[15] = {
         "***************",
         "*>            *",
         "*      @      *",
@@ -141,49 +193,48 @@ void carregar_andar2() {
     fase_atual  = 2;
     num_linhas  = 15;
     num_colunas = 15;
-    for (linha = 0; linha < num_linhas; linha++)
-        for (coluna = 0; coluna < num_colunas; coluna++)
-            mapa[linha][coluna] = temp[linha][coluna];
+    for (l = 0; l < num_linhas; l++)
+        for (c = 0; c < num_colunas; c++)
+            mapa[l][c] = temp[l][c];
     jogador_linha      = 1;
     jogador_coluna     = 1;
     jogador_direcao    = '>';
     celula_sob_jogador = ' ';
-    mapa[jogador_linha][jogador_coluna] = jogador_direcao;
-    total_monstros    = 1;
-    monstro_linha[0]  = 5;
-    monstro_coluna[0] = 9;
-    monstro_tipo[0]   = 'X';
-    monstro_vivo[0]   = 1;
-    mapa[monstro_linha[0]][monstro_coluna[0]] = 'X';
+    mapa_set(jogador_linha, jogador_coluna, jogador_direcao);
+    total_monstros   = 1;
+    monstro_linha[0] = 5;  monstro_coluna[0] = 9;
+    monstro_tipo[0]  = 'X'; monstro_vivo[0]  = 1;
+    mapa_set(monstro_linha[0], monstro_coluna[0], 'X');
     tem_chave = 0;
-    salvar_mapa();
+    boss_vida = 0;
+    salvar_estado();
 }
 
 void carregar_andar3() {
-    int linha, coluna, k;
-    char temp[25][26] = {
+    int l, c, k;
+    const char *temp[25] = {
         "*************************",
-        "*>  @                   *",
+        "*>                      *",
         "*                       *",
-        "*   ######### ######    *",
+        "*  ######   ########    *",
         "*                       *",
-        "*             @         *",
+        "*           k           *",
+        "*                  @    *",
         "*                       *",
-        "* ****D**************** *",
+        "****D********************",
         "*                       *",
-        "*   k   k   k           *",
+        "*  ***       ***        *",
+        "*  @                    *",
+        "*  ***       ***        *",
+        "*      Y         Y      *",
         "*                       *",
-        "*        @              *",
         "*                       *",
-        "* *************D******* *",
+        "************D************",
         "*                       *",
+        "*   * *   Z   * *       *",
         "*                       *",
-        "***********D*************",
-        "*  Y             Y      *",
+        "*   * *       * *       *",
         "*                       *",
-        "*         Z             *",
-        "*                       *",
-        "*  Y             Y      *",
         "*                       *",
         "*                    L  *",
         "*************************"
@@ -191,35 +242,31 @@ void carregar_andar3() {
     fase_atual  = 3;
     num_linhas  = 25;
     num_colunas = 25;
-    for (linha = 0; linha < num_linhas; linha++)
-        for (coluna = 0; coluna < num_colunas; coluna++)
-            mapa[linha][coluna] = temp[linha][coluna];
+    for (l = 0; l < num_linhas; l++)
+        for (c = 0; c < num_colunas; c++)
+            mapa[l][c] = temp[l][c];
     jogador_linha      = 1;
     jogador_coluna     = 1;
     jogador_direcao    = '>';
     celula_sob_jogador = ' ';
-    mapa[jogador_linha][jogador_coluna] = jogador_direcao;
-
-    total_monstros    = 5;
-    monstro_linha[0]  = 19; monstro_coluna[0] = 10; monstro_tipo[0] = 'Z'; monstro_vivo[0] = 1;
-    monstro_linha[1]  = 17; monstro_coluna[1] = 3;  monstro_tipo[1] = 'Y'; monstro_vivo[1] = 1;
-    monstro_linha[2]  = 17; monstro_coluna[2] = 17; monstro_tipo[2] = 'Y'; monstro_vivo[2] = 1;
-    monstro_linha[3]  = 21; monstro_coluna[3] = 3;  monstro_tipo[3] = 'Y'; monstro_vivo[3] = 1;
-    monstro_linha[4]  = 21; monstro_coluna[4] = 17; monstro_tipo[4] = 'Y'; monstro_vivo[4] = 1;
-
+    mapa_set(jogador_linha, jogador_coluna, jogador_direcao);
+    total_monstros    = 3;
+    monstro_linha[0]  = 18; monstro_coluna[0] = 10; monstro_tipo[0] = 'Z'; monstro_vivo[0] = 1;
+    monstro_linha[1]  = 13; monstro_coluna[1] =  7; monstro_tipo[1] = 'Y'; monstro_vivo[1] = 1;
+    monstro_linha[2]  = 13; monstro_coluna[2] = 17; monstro_tipo[2] = 'Y'; monstro_vivo[2] = 1;
     for (k = 0; k < total_monstros; k++)
-        mapa[monstro_linha[k]][monstro_coluna[k]] = monstro_tipo[k];
-
+        mapa_set(monstro_linha[k], monstro_coluna[k], monstro_tipo[k]);
     boss_vida           = 4;
     boss_contador_turno = 0;
     tem_chave           = 0;
-    salvar_mapa();
+    srand((unsigned int)time(NULL) ^ (unsigned int)fase_atual);
+    salvar_estado();
 }
 
 void reiniciar_fase() {
     int k;
     vidas--;
-    printf("\nvoce morreu! vidas: %d\n", vidas);
+    printf("\nvoce morreu! vidas restantes: %d\n", vidas);
     if (vidas <= 0) {
         printf("\n=== GAME OVER ===\n");
         pausar();
@@ -231,229 +278,342 @@ void reiniciar_fase() {
     jogador_linha      = jogador_linha_inicio;
     jogador_coluna     = jogador_coluna_inicio;
     jogador_direcao    = jogador_direcao_inicio;
-    celula_sob_jogador = ' ';
-    mapa[jogador_linha][jogador_coluna] = jogador_direcao;
+    celula_sob_jogador = celula_sob_jogador_inicio;
+    mapa_set(jogador_linha, jogador_coluna, jogador_direcao);
     for (k = 0; k < total_monstros; k++) {
-        monstro_vivo[k] = 1;
-        mapa[monstro_linha[k]][monstro_coluna[k]] = monstro_tipo[k];
+        monstro_vivo[k]   = 1;
+        monstro_linha[k]  = monstro_linha_inicio[k];
+        monstro_coluna[k] = monstro_coluna_inicio[k];
+        mapa_set(monstro_linha[k], monstro_coluna[k], monstro_tipo[k]);
     }
+    boss_vida = boss_vida_inicio;
     tem_chave = 0;
 }
 
-void mover_monstros() {
-    int deslocamento_linha[4];
-    int deslocamento_coluna[4];
-    int k, direcao_sorteada;
-    int nova_linha, nova_coluna;
-    int diff_linha, diff_coluna;
+#define BFS_VAZIO -1
 
-    deslocamento_linha[0]  = -1; deslocamento_linha[1]  =  1;
-    deslocamento_linha[2]  =  0; deslocamento_linha[3]  =  0;
-    deslocamento_coluna[0] =  0; deslocamento_coluna[1] =  0;
-    deslocamento_coluna[2] = -1; deslocamento_coluna[3] =  1;
+typedef struct { short l, c; } Celula;
+
+static int   bfs_pai_l[MAX_LINHAS][MAX_COLUNAS];
+static int   bfs_pai_c[MAX_LINHAS][MAX_COLUNAS];
+static Celula bfs_fila[MAX_LINHAS * MAX_COLUNAS];
+
+static int y_bloqueado(int l, int c) {
+    char ch;
+    if (!pos_valida(l, c)) return 1;
+    ch = mapa_get(l, c);
+    return ch == '*' || ch == 'D' || ch == 'k' || ch == 'N' || ch == '#';
+}
+
+static int bfs_proximo_passo(int orig_l, int orig_c,
+                              int dest_l, int dest_c,
+                              int *pl, int *pc) {
+    const int dl[4] = { -1, 1,  0, 0 };
+    const int dc[4] = {  0, 0, -1, 1 };
+    int head, tail, d, nl, nc, cl, cc;
+
+    for (cl = 0; cl < num_linhas; cl++)
+        for (cc = 0; cc < num_colunas; cc++) {
+            bfs_pai_l[cl][cc] = BFS_VAZIO;
+            bfs_pai_c[cl][cc] = BFS_VAZIO;
+        }
+
+    head = tail = 0;
+    bfs_pai_l[orig_l][orig_c] = orig_l;
+    bfs_pai_c[orig_l][orig_c] = orig_c;
+    bfs_fila[tail].l = (short)orig_l;
+    bfs_fila[tail].c = (short)orig_c;
+    tail++;
+
+    while (head < tail) {
+        cl = bfs_fila[head].l;
+        cc = bfs_fila[head].c;
+        head++;
+
+        if (cl == dest_l && cc == dest_c) break;
+
+        for (d = 0; d < 4; d++) {
+            nl = cl + dl[d];
+            nc = cc + dc[d];
+            if (!pos_valida(nl, nc)) continue;
+            if (bfs_pai_l[nl][nc] != BFS_VAZIO) continue;
+            if (nl != dest_l || nc != dest_c)
+                if (y_bloqueado(nl, nc)) continue;
+            bfs_pai_l[nl][nc] = cl;
+            bfs_pai_c[nl][nc] = cc;
+            bfs_fila[tail].l = (short)nl;
+            bfs_fila[tail].c = (short)nc;
+            tail++;
+        }
+    }
+
+    if (bfs_pai_l[dest_l][dest_c] == BFS_VAZIO) return 0;
+
+    cl = dest_l; cc = dest_c;
+    while (1) {
+        int pl2 = bfs_pai_l[cl][cc];
+        int pc2 = bfs_pai_c[cl][cc];
+        if (pl2 == orig_l && pc2 == orig_c) break;
+        cl = pl2; cc = pc2;
+    }
+    *pl = cl;
+    *pc = cc;
+    return 1;
+}
+
+void mover_monstros() {
+    const int dl[4] = { -1,  1,  0,  0 };
+    const int dc[4] = {  0,  0, -1,  1 };
+    int k, dir, nl, nc, diff_l, diff_c;
 
     for (k = 0; k < total_monstros; k++) {
         if (!monstro_vivo[k]) continue;
 
-        nova_linha  = monstro_linha[k];
-        nova_coluna = monstro_coluna[k];
+        nl = monstro_linha[k];
+        nc = monstro_coluna[k];
 
         if (monstro_tipo[k] == 'X') {
-            direcao_sorteada = rand() % 4;
-            nova_linha  = monstro_linha[k]  + deslocamento_linha[direcao_sorteada];
-            nova_coluna = monstro_coluna[k] + deslocamento_coluna[direcao_sorteada];
+            dir = rand() % 4;
+            nl  = monstro_linha[k] + dl[dir];
+            nc  = monstro_coluna[k] + dc[dir];
 
         } else if (monstro_tipo[k] == 'Y') {
-            diff_linha  = jogador_linha  - monstro_linha[k];
-            diff_coluna = jogador_coluna - monstro_coluna[k];
-            if (abs(diff_linha) >= abs(diff_coluna))
-                nova_linha  = monstro_linha[k]  + (diff_linha  > 0 ? 1 : -1);
-            else
-                nova_coluna = monstro_coluna[k] + (diff_coluna > 0 ? 1 : -1);
+            int passo_l, passo_c;
+            if (bfs_proximo_passo(monstro_linha[k], monstro_coluna[k],
+                                  jogador_linha,    jogador_coluna,
+                                  &passo_l, &passo_c)) {
+                nl = passo_l;
+                nc = passo_c;
+            }
 
         } else if (monstro_tipo[k] == 'Z') {
-            diff_linha  = jogador_linha  - monstro_linha[k];
-            diff_coluna = jogador_coluna - monstro_coluna[k];
-            if (abs(diff_linha) >= abs(diff_coluna))
-                nova_linha  = monstro_linha[k]  + (diff_linha  > 0 ? 1 : -1);
-            else
-                nova_coluna = monstro_coluna[k] + (diff_coluna > 0 ? 1 : -1);
+            diff_l = jogador_linha  - monstro_linha[k];
+            diff_c = jogador_coluna - monstro_coluna[k];
+            if (jogador_linha >= 17 || (abs(diff_l) + abs(diff_c)) <= 7) {
+                if (abs(diff_l) >= abs(diff_c))
+                    nl = monstro_linha[k]  + (diff_l > 0 ? 1 : -1);
+                else
+                    nc = monstro_coluna[k] + (diff_c > 0 ? 1 : -1);
+            }
         }
 
-        if (nova_linha == jogador_linha && nova_coluna == jogador_coluna) {
+        if (nl == jogador_linha && nc == jogador_coluna) {
             reiniciar_fase();
             return;
         }
 
-        if (nova_linha  >= 0 && nova_linha  < num_linhas  &&
-            nova_coluna >= 0 && nova_coluna < num_colunas &&
-            mapa[nova_linha][nova_coluna] == ' ') {
-            mapa[monstro_linha[k]][monstro_coluna[k]] = ' ';
-            monstro_linha[k]  = nova_linha;
-            monstro_coluna[k] = nova_coluna;
-            mapa[monstro_linha[k]][monstro_coluna[k]] = monstro_tipo[k];
+        if (pos_valida(nl, nc) && mapa_get(nl, nc) == ' ') {
+            mapa_set(monstro_linha[k], monstro_coluna[k], ' ');
+            monstro_linha[k]  = nl;
+            monstro_coluna[k] = nc;
+            mapa_set(monstro_linha[k], monstro_coluna[k], monstro_tipo[k]);
         }
     }
 }
 
-void atacar_celula(int linha, int coluna) {
+void atacar_celula(int l, int c) {
     int k;
-    if (linha < 0 || linha >= num_linhas || coluna < 0 || coluna >= num_colunas) return;
+    if (!pos_valida(l, c)) return;
 
-    if (mapa[linha][coluna] == 'k') { mapa[linha][coluna] = ' '; return; }
+    if (mapa_get(l, c) == 'k') {
+        mapa_set(l, c, ' ');
+        return;
+    }
 
     for (k = 0; k < total_monstros; k++) {
-        if (!monstro_vivo[k] || monstro_linha[k] != linha || monstro_coluna[k] != coluna) continue;
+        if (!monstro_vivo[k] || monstro_linha[k] != l || monstro_coluna[k] != c)
+            continue;
         if (monstro_tipo[k] == 'Z') {
             boss_vida--;
             printf("boss vida: %d\n", boss_vida);
-            if (boss_vida <= 0) { monstro_vivo[k] = 0; mapa[linha][coluna] = ' '; }
+            if (boss_vida <= 0) {
+                monstro_vivo[k] = 0;
+                mapa_set(l, c, ' ');
+            }
         } else {
-            monstro_vivo[k]     = 0;
-            mapa[linha][coluna] = ' ';
+            monstro_vivo[k] = 0;
+            mapa_set(l, c, ' ');
         }
+        break;
     }
 }
 
 void atacar() {
-    int dir_linha, dir_coluna;
-    int lateral_linha, lateral_coluna;
-    int profundidade, i;
-    int adj_linha[8];
-    int adj_coluna[8];
+    int dir_l = 0, dir_c = 0;
+    int lat_l, lat_c, prof, i;
+    const int adj_l[8] = { -1, -1, -1,  0,  0,  1,  1,  1 };
+    const int adj_c[8] = { -1,  0,  1, -1,  1, -1,  0,  1 };
 
-    adj_linha[0] = -1; adj_linha[1] = -1; adj_linha[2] = -1;
-    adj_linha[3] =  0; adj_linha[4] =  0;
-    adj_linha[5] =  1; adj_linha[6] =  1; adj_linha[7] =  1;
-    adj_coluna[0] = -1; adj_coluna[1] = 0; adj_coluna[2] = 1;
-    adj_coluna[3] = -1; adj_coluna[4] = 1;
-    adj_coluna[5] = -1; adj_coluna[6] = 0; adj_coluna[7] = 1;
-
-    dir_linha  = 0;
-    dir_coluna = 0;
-    if      (jogador_direcao == '^') dir_linha  = -1;
-    else if (jogador_direcao == 'v') dir_linha  =  1;
-    else if (jogador_direcao == '<') dir_coluna = -1;
-    else                             dir_coluna =  1;
+    if      (jogador_direcao == '^') dir_l = -1;
+    else if (jogador_direcao == 'v') dir_l =  1;
+    else if (jogador_direcao == '<') dir_c = -1;
+    else                             dir_c =  1;
 
     if (arma == 0) {
-        lateral_linha  = (dir_linha  == 0) ? 1 : 0;
-        lateral_coluna = (dir_coluna == 0) ? 1 : 0;
-        for (profundidade = 1; profundidade <= 2; profundidade++) {
-            atacar_celula(jogador_linha + dir_linha*profundidade - lateral_linha,
-                          jogador_coluna + dir_coluna*profundidade - lateral_coluna);
-            atacar_celula(jogador_linha + dir_linha*profundidade,
-                          jogador_coluna + dir_coluna*profundidade);
-            atacar_celula(jogador_linha + dir_linha*profundidade + lateral_linha,
-                          jogador_coluna + dir_coluna*profundidade + lateral_coluna);
+        lat_l = (dir_l == 0) ? 1 : 0;
+        lat_c = (dir_c == 0) ? 1 : 0;
+        for (prof = 1; prof <= 2; prof++) {
+            atacar_celula(jogador_linha + dir_l*prof - lat_l,
+                          jogador_coluna + dir_c*prof - lat_c);
+            atacar_celula(jogador_linha + dir_l*prof,
+                          jogador_coluna + dir_c*prof);
+            atacar_celula(jogador_linha + dir_l*prof + lat_l,
+                          jogador_coluna + dir_c*prof + lat_c);
         }
     } else if (arma == 1) {
         for (i = 1; i <= 4; i++)
-            atacar_celula(jogador_linha + dir_linha*i, jogador_coluna + dir_coluna*i);
+            atacar_celula(jogador_linha + dir_l*i, jogador_coluna + dir_c*i);
     } else {
         for (i = 0; i < 8; i++)
-            atacar_celula(jogador_linha + adj_linha[i], jogador_coluna + adj_coluna[i]);
+            atacar_celula(jogador_linha + adj_l[i], jogador_coluna + adj_c[i]);
     }
 }
 
 void interagir() {
-    int alvo_linha, alvo_coluna;
+    int al, ac;
     char opcao, objeto;
 
-    alvo_linha  = jogador_linha;
-    alvo_coluna = jogador_coluna;
-    if      (jogador_direcao == '^') alvo_linha--;
-    else if (jogador_direcao == 'v') alvo_linha++;
-    else if (jogador_direcao == '<') alvo_coluna--;
-    else                             alvo_coluna++;
+    al = jogador_linha;
+    ac = jogador_coluna;
+    if      (jogador_direcao == '^') al--;
+    else if (jogador_direcao == 'v') al++;
+    else if (jogador_direcao == '<') ac--;
+    else                             ac++;
 
-    objeto = mapa[alvo_linha][alvo_coluna];
+    if (!pos_valida(al, ac)) {
+        printf("nada aqui.\n");
+        pausar();
+        return;
+    }
+
+    objeto = mapa_get(al, ac);
 
     if (objeto == 'D') {
         if (tem_chave) {
-            mapa[alvo_linha][alvo_coluna] = '=';
+            mapa_set(al, ac, '=');
             tem_chave = 0;
             printf("porta aberta!\n");
         } else {
             printf("precisa de chave!\n");
         }
+        pausar();
+
     } else if (objeto == 'N') {
-        system("cls");
-        printf("NPC: escolha sua arma:\n1. espada\n2. arco\n3. cajado\n> ");
-        scanf(" %c", &opcao);
+        do {
+            limpar_tela();
+            printf("NPC: escolha sua arma:\n");
+            printf("1. espada (area 3x2 na frente)\n");
+            printf("2. arco   (linha reta, alcance 4)\n");
+            printf("3. cajado (todas as 8 celulas ao redor)\n");
+            printf("> ");
+            fflush(stdout);
+            opcao = ler_char();
+            if (opcao != '1' && opcao != '2' && opcao != '3')
+                printf("\nescolha uma opcao valida! (1, 2 ou 3)\n");
+        } while (opcao != '1' && opcao != '2' && opcao != '3');
+
         arma = (opcao == '1') ? 0 : (opcao == '2') ? 1 : 2;
         printf("\narma %d equipada!\n", arma + 1);
         pausar();
+
     } else {
         printf("nada aqui.\n");
+        pausar();
     }
 }
 
 int loop_fase() {
-    int nova_linha, nova_coluna, k, acertou_monstro, boss_vivo, linha, coluna;
-    char tecla, nova_direcao, destino;
+    int nl, nc, k, acertou, boss_vivo, l, c, botao_ativado;
+    char tecla, nova_dir, dest;
 
     while (1) {
-        if (mapa[jogador_linha][jogador_coluna] == 'L' || celula_sob_jogador == 'L') {
+        if (celula_sob_jogador == 'L') {
             printf("subindo...\n");
             pausar();
             return 2;
         }
 
+        sincronizar_monstros_no_mapa();
         desenhar();
 
         if (fase_atual == 3) {
             boss_vivo = 0;
             for (k = 0; k < total_monstros; k++)
-                if (monstro_tipo[k] == 'Z' && monstro_vivo[k]) boss_vivo = 1;
+                if (monstro_tipo[k] == 'Z' && monstro_vivo[k]) { boss_vivo = 1; break; }
             if (!boss_vivo) return 3;
             printf("boss vida: %d/4\n", boss_vida);
         }
 
-        scanf(" %c", &tecla);
-        nova_linha   = jogador_linha;
-        nova_coluna  = jogador_coluna;
-        nova_direcao = jogador_direcao;
+        fflush(stdout);
+        tecla    = ler_char();
+        nl       = jogador_linha;
+        nc       = jogador_coluna;
+        nova_dir = jogador_direcao;
 
         if      (tecla == 'q') return 0;
-        else if (tecla == 'w') { nova_linha--;  nova_direcao = '^'; }
-        else if (tecla == 's') { nova_linha++;  nova_direcao = 'v'; }
-        else if (tecla == 'a') { nova_coluna--; nova_direcao = '<'; }
-        else if (tecla == 'd') { nova_coluna++; nova_direcao = '>'; }
+        else if (tecla == 'w') { nl--;  nova_dir = '^'; }
+        else if (tecla == 's') { nl++;  nova_dir = 'v'; }
+        else if (tecla == 'a') { nc--;  nova_dir = '<'; }
+        else if (tecla == 'd') { nc++;  nova_dir = '>'; }
         else if (tecla == 'i') { interagir(); continue; }
-        else if (tecla == 'o') { atacar(); mover_monstros(); continue; }
+        else if (tecla == 'o') { atacar(); mover_monstros(); if (fase_atual == -1) return 0; continue; }
         else continue;
 
-        jogador_direcao = nova_direcao;
-        mapa[jogador_linha][jogador_coluna] = jogador_direcao;
+        jogador_direcao = nova_dir;
+        mapa_set(jogador_linha, jogador_coluna, jogador_direcao);
 
-        if (nova_linha < 0 || nova_linha >= num_linhas || nova_coluna < 0 || nova_coluna >= num_colunas) continue;
+        if (!pos_valida(nl, nc)) {
+            mover_monstros();
+            if (fase_atual == -1) return 0;
+            continue;
+        }
 
-        destino = mapa[nova_linha][nova_coluna];
-        if (destino == '*' || destino == 'D' || destino == 'k' || destino == 'N') continue;
+        dest = mapa_get(nl, nc);
 
-        acertou_monstro = 0;
-        for (k = 0; k < total_monstros; k++)
-            if (monstro_vivo[k] && monstro_linha[k] == nova_linha && monstro_coluna[k] == nova_coluna)
-                acertou_monstro = 1;
-        if (acertou_monstro) { reiniciar_fase(); if (fase_atual == -1) return 0; continue; }
+        if (dest == '*' || dest == 'D' || dest == 'k' || dest == 'N') {
+            mover_monstros();
+            if (fase_atual == -1) return 0;
+            continue;
+        }
 
-        if (destino == '@') { tem_chave++; printf("chave!\n"); }
-        if (destino == '#') { reiniciar_fase(); if (fase_atual == -1) return 0; continue; }
+        acertou = 0;
+        for (k = 0; k < total_monstros; k++) {
+            if (monstro_vivo[k] && monstro_linha[k] == nl && monstro_coluna[k] == nc) {
+                acertou = 1;
+                break;
+            }
+        }
+        if (acertou) {
+            reiniciar_fase();
+            if (fase_atual == -1) return 0;
+            continue;
+        }
 
-        if (destino == 'O') {
-            for (linha = 0; linha < num_linhas; linha++)
-                for (coluna = 0; coluna < num_colunas; coluna++)
-                    if (mapa[linha][coluna] == 'D') { mapa[linha][coluna] = '='; goto botao_ativado; }
-            botao_ativado:
+        if (dest == '@')
+            tem_chave++;
+
+        if (dest == '#') {
+            reiniciar_fase();
+            if (fase_atual == -1) return 0;
+            continue;
+        }
+
+        if (dest == 'O') {
+            botao_ativado = 0;
+            for (l = 0; l < num_linhas && !botao_ativado; l++)
+                for (c = 0; c < num_colunas && !botao_ativado; c++)
+                    if (mapa_get(l, c) == 'D') {
+                        mapa_set(l, c, '=');
+                        botao_ativado = 1;
+                    }
             printf("botao pressionado!\n");
         }
 
-        mapa[jogador_linha][jogador_coluna] = celula_sob_jogador;
-        celula_sob_jogador = (destino == '@' || destino == '#' || destino == 'O') ? ' ' : destino;
-        jogador_linha  = nova_linha;
-        jogador_coluna = nova_coluna;
-        mapa[jogador_linha][jogador_coluna] = jogador_direcao;
+        mapa_set(jogador_linha, jogador_coluna, celula_sob_jogador);
+        celula_sob_jogador = (dest == '@' || dest == 'O') ? ' ' : dest;
+        jogador_linha  = nl;
+        jogador_coluna = nc;
+        mapa_set(jogador_linha, jogador_coluna, jogador_direcao);
 
         mover_monstros();
         if (fase_atual == -1) return 0;
@@ -462,13 +622,18 @@ int loop_fase() {
 
 int main() {
     char opcao;
-    srand(time(NULL));
+    srand((unsigned int)time(NULL));
 
     while (1) {
-        system("cls");
-        printf("\n=== DUNGEON CRAWLER ===\n\n");
-        printf("1. jogar\n2. tutorial\n3. sair\n\n> ");
-        scanf(" %c", &opcao);
+        do {
+            limpar_tela();
+            printf("\n=== DUNGEON CRAWLER ===\n\n");
+            printf("1. jogar\n2. tutorial\n3. sair\n\n> ");
+            fflush(stdout);
+            opcao = ler_char();
+            if (opcao != '1' && opcao != '2' && opcao != '3')
+                printf("\nescolha uma opcao valida! (1, 2 ou 3)\n");
+        } while (opcao != '1' && opcao != '2' && opcao != '3');
 
         if (opcao == '1') {
             vidas     = 3;
@@ -486,31 +651,38 @@ int main() {
 
             carregar_andar3();
             if (loop_fase() == 3) {
-                system("cls");
+                limpar_tela();
                 printf("\n=== VITORIA ===\n\n");
                 printf("voce derrotou o boss e salvou a vila!\n\n");
                 pausar();
             }
 
         } else if (opcao == '2') {
-            system("cls");
+            limpar_tela();
             printf("=== TUTORIAL ===\n\n");
-            printf("> ^ < v  jogador\n");
+            printf("> ^ < v  jogador (mostra direcao)\n");
             printf("*        parede\n");
-            printf("#        espinho (mata)\n");
-            printf("k        caixa (destruivel)\n");
-            printf("O        botao\n");
+            printf("#        espinho (mata ao pisar)\n");
+            printf("k        caixa (destruivel com ataque)\n");
+            printf("O        botao (abre a primeira porta D do mapa)\n");
             printf("D / =    porta fechada / aberta\n");
             printf("@        chave\n");
-            printf("L        escada\n");
-            printf("N        npc\n");
+            printf("L        escada (proximo andar)\n");
+            printf("N        npc (escolher arma)\n");
             printf("X Y Z    monstros\n\n");
-            printf("w a s d  mover | i interagir | o atacar\n\n");
-            printf("historia: monstros invadiram a masmorra. derrote o boss e salve a vila.\n\n");
+            printf("w a s d  mover\n");
+            printf("i        interagir com objeto a frente\n");
+            printf("o        atacar\n\n");
+            printf("armas:\n");
+            printf("  1 espada: area 3x2 na frente\n");
+            printf("  2 arco:   linha reta (alcance 4)\n");
+            printf("  3 cajado: todas as 8 celulas ao redor\n\n");
+            printf("historia: monstros invadiram a masmorra.\n");
+            printf("derrote o boss Z e salve a vila.\n\n");
             pausar();
 
-        } else if (opcao == '3') {
-            system("cls");
+        } else {
+            limpar_tela();
             printf("\ncreditos: [seu nome]\nate mais!\n\n");
             return 0;
         }
