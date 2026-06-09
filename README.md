@@ -95,4 +95,4 @@ A ferramenta foi utilizada para:
 * Fornecer sugestões para implementação de funcionalidades;
 * Auxiliar na organização e estruturação do código.
 
-Todo o desenvolvimento, adaptação, implementação e testes finais foram realizados pelo desenvolvedor André Hiroshi Mileo Yamada.
+Todo o desenvolvimento, adaptação, implementação e testes finais foram realizados pelos desenvolvedores André Hiroshi Mileo Yamada e Artur Sampaio Dantas.
